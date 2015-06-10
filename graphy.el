@@ -1,40 +1,100 @@
+(defun drawing-test ()
+  (interactive)
+  (insert (draw-graph graph-json))
+  (get-points)
+  (fill-points))
 
-10-| @@@                 @@@                                                         @@@ @@@ @@@                 @@@ |
----| @@@                 @@@                                                         @@@ @@@ @@@                 @@@ |
-8--| @@@             @@@ @@@                                                         @@@ @@@ @@@                 @@@ |
----| @@@ @@@         @@@ @@@                                                 @@@ @@@ @@@ @@@ @@@ @@@ @@@         @@@ |
-6--| @@@ @@@         @@@ @@@                                                 @@@ @@@ @@@ @@@ @@@ @@@ @@@     @@@ @@@ |
----| @@@ @@@     @@@ @@@ @@@                                     @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@     @@@ @@@ |
-4--| @@@ @@@ @@@ @@@ @@@ @@@                 @@@         @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@     @@@ @@@ |
----| @@@ @@@ @@@ @@@ @@@ @@@                 @@@ @@@     @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@     @@@ @@@ |
-2--| @@@ @@@ @@@ @@@ @@@ @@@             @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ |
----| @@@ @@@ @@@ @@@ @@@ @@@         @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ |
-0--| @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ @@@ |
--------------------------------------------------------------------------------------------------------------------- |
----|  04:00 | 04:15 | 04:30 | 04:45 | 05:00 | 05:15 | 05:30 | 05:45 | 06:00 | 06:15 | 06:30 | 06:45 | 07:00 | 07:15  |
-
-(save-excursion
+(defun get-points ()
   (setq draw-list '())
-  (beginning-of-buffer)
-  (while (< (point) (point-max))
-    (graphy--maybe-add-to-draw-list)
-    (forward-char)))
+  (setq del-draw-list '())
+  (let ((p1 1))
+    (while (< p1 (point-max))
+      (graphy--maybe-add-to-draw-list p1)
+      (setq p1 (+ p1 1)))))
 
-(mapc (lambda (p)
-        (overlay-put (make-overlay p (+ p 1)) 'face 'graphy-bar-face)) draw-list)
+(defun fill-points ()
+  (remove-overlays)
+  (mapc (lambda (p)
+          (overlay-put (make-overlay p (+ p 1)) 'face 'graphy-bar-face)) draw-list)
+  (mapc (lambda (p)
+          (overlay-put (make-overlay p (+ p 1)) 'face 'graphy-bar-background-face)) del-draw-list))
 
-
-(overlay-put (make-overlay 1 2) 'face 'graphy-bar-face)
 (defface graphy-bar-face
   '((t :background "#7700ff" :foreground "#7700ff"))
   "" :group 'graphy)
 
-(defun graphy--maybe-add-to-draw-list ()
-  (if (equal (char-at-point (point)) "@") (add-to-list 'draw-list (point))))
+(defface graphy-bar-background-face
+  '((t :background "#1d1f21" :foreground "#1d1f21"))
+  "" :group 'graphy)
 
-(defun assocv (key lat)
+(defun graphy--maybe-add-to-draw-list (p1)
+  (cond
+   ((equal (buffer-substring-no-properties p1 (+ p1 1)) "@")
+    (add-to-list 'draw-list p1))
+   ((equal (buffer-substring-no-properties p1 (+ p1 1)) "#")
+    (add-to-list 'del-draw-list p1))))
+
+(defun lookup (key lat)
   (cdr (assoc key lat)))
 
-(rassoc '"2015-06-0" '((date . "2015-06-09") (zzz . "2015-06-0")))
-(assocv 'date '((date . "2015-06-09")))
-(lookup-key 'date '((date . "2015-06-09")))
+(defun kibana-buckets (json-string)
+  (let ((json (json-read-from-string json-string)))
+    (lookup 'buckets (lookup '\2 (lookup 'aggregations json)))))
+
+(defun maxl (lat)
+  (reduce #'max lat))
+
+(defun doc-counts (buckets)
+  (mapcar (lambda (d) (lookup 'doc_count d)) buckets))
+
+(defun max-graph-y (buckets)
+  (maxl (doc-counts buckets)))
+
+(defvar y-len 10)
+
+(defun graph-y-points (graph)
+  (let ((lat (make-list y-len 0))
+        (inc (/ (max-graph-y graph) (- y-len 1))))
+    (reduce (lambda (a b)
+              (cond
+               ((listp a) (cons (+ inc b (car a)) a))
+               (t (cons (+ inc b) (list a))))) lat)))
+
+(defun draw-numbering (y-points)
+    (mapc (lambda (y)
+            (beginning-of-line)
+            (insert (format "%3d |" y))
+            (end-of-line)
+            (newline)
+            (insert (format "%3s |" ""))
+            (end-of-line)
+            (newline)) y-points))
+
+(defun draw-graph (graph-json)
+  (with-temp-buffer
+    (let* ((buckets (kibana-buckets graph-json))
+           (max (max-graph-y buckets))
+           (y-points (graph-y-points buckets)))
+      (draw-numbering y-points)
+      (beginning-of-buffer)
+      (mapcar (lambda (count) (draw-row max count)) (doc-counts (kibana-buckets graph-json)))
+      (buffer-string))))
+
+(defun draw-row (max doc-count)
+  (let* ((index (- (* y-len 2) 1))
+         (divided (/ max 19)))
+    (end-of-line)
+    (beginning-of-buffer)
+    (while (> index 0)
+      (end-of-line)
+      (just-one-space 1)
+      (cond
+       ((>= doc-count (* index divided)) (insert "@@"))
+       (t (insert "##")))
+      (next-line)
+      (setq index (- index 1)))
+    (buffer-string)))
+
+(setq graph-json (with-temp-buffer
+                  (insert-file-contents "json-example")
+                  (buffer-string)))
