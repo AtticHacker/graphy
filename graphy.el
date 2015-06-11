@@ -1,38 +1,40 @@
 (defun drawing-test ()
   (interactive)
-  (insert (draw-graph graph-json))
-  (get-points)
-  (fill-points))
+  (insert (draw-graph graph-json)))
 
-(defun get-points ()
-  (setq draw-list '())
-  (setq del-draw-list '())
-  (let ((p1 1))
-    (while (< p1 (point-max))
-      (graphy--maybe-add-to-draw-list p1)
-      (setq p1 (+ p1 1)))))
+(defvar graphy-mode-hook nil)
 
-(defun fill-points ()
-  (remove-overlays)
-  (mapc (lambda (p)
-          (overlay-put (make-overlay p (+ p 1)) 'face 'graphy-bar-face)) draw-list)
-  (mapc (lambda (p)
-          (overlay-put (make-overlay p (+ p 1)) 'face 'graphy-bar-background-face)) del-draw-list))
+(defvar graphy-mode-map
+  (let ((graphy-mode-map (make-keymap)))
+    (define-key graphy-mode-map "\C-j" 'newline-and-indent)
+    graphy-mode-map)
+  "Keymap for Graphy major mode")
 
+;; (add-to-list 'auto-mode-alist '("\\*Kibana*\\'" . graphy-mode))
+
+(defvar graphy-bar-face 'graphy-bar-face)
 (defface graphy-bar-face
   '((t :background "#7700ff" :foreground "#7700ff"))
-  "" :group 'graphy)
+  "" :group 'font-lock-faces)
 
+(defvar graphy-bar-background-face 'graphy-bar-background-face)
 (defface graphy-bar-background-face
   '((t :background "#1d1f21" :foreground "#1d1f21"))
-  "" :group 'graphy)
+  "" :group 'font-lock-faces)
 
-(defun graphy--maybe-add-to-draw-list (p1)
-  (cond
-   ((equal (buffer-substring-no-properties p1 (+ p1 1)) "@")
-    (add-to-list 'draw-list p1))
-   ((equal (buffer-substring-no-properties p1 (+ p1 1)) "#")
-    (add-to-list 'del-draw-list p1))))
+(setq graphy-font-lock
+      '(("π" . graphy-bar-face)
+        ("√" . graphy-bar-background-face)))
+
+(defun graphy-mode ()
+  "Major mode for editing Workflow Process Description Language files"
+  (interactive)
+  (kill-all-local-variables)
+  (setq font-lock-defaults '(graphy-font-lock))
+  (use-local-map graphy-mode-map)
+  (setq major-mode 'graphy-mode)
+  (setq mode-name "Graphy")
+  (run-hooks 'graphy-mode-hook))
 
 (defun lookup (key lat)
   (cdr (assoc key lat)))
@@ -83,14 +85,14 @@
 (defun draw-row (max doc-count)
   (let* ((index (- (* y-len 2) 1))
          (divided (/ max 19)))
-    (end-of-line)
+    (delete-trailing-whitespace)
     (beginning-of-buffer)
     (while (> index 0)
       (end-of-line)
-      (just-one-space 1)
+      (insert "√")
       (cond
-       ((>= doc-count (* index divided)) (insert "@@"))
-       (t (insert "##")))
+       ((>= doc-count (* index divided)) (insert "ππ"))
+       (t (insert "√√")))
       (next-line)
       (setq index (- index 1)))
     (buffer-string)))
